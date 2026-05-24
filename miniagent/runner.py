@@ -30,5 +30,11 @@ def run(command: str, cwd: Path, timeout: int, error_patterns: list[str]) -> Run
             stderr=result.stderr,
             success=success,
         )
-    except subprocess.TimeoutExpired:
-        return RunResult(exit_code=-1, stdout="", stderr="Timeout expired", success=False)
+    except subprocess.TimeoutExpired as e:
+        stdout = e.stdout if isinstance(e.stdout, str) else (e.stdout.decode(errors="replace") if e.stdout else "")
+        return RunResult(
+            exit_code=-1,  # -1 signals timeout (not a real process exit code)
+            stdout=stdout,
+            stderr="Timeout expired",
+            success=False,
+        )
