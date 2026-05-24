@@ -11,8 +11,11 @@ def parse_patches(response: str) -> dict[str, str]:
 
 
 def apply_patches(patches: dict[str, str], project_folder: Path) -> None:
+    resolved_root = project_folder.resolve()
     for rel_path, content in patches.items():
-        target = project_folder / rel_path
+        target = (project_folder / rel_path).resolve()
+        if not str(target).startswith(str(resolved_root) + ("/" if "/" in str(resolved_root) else "\\")):
+            raise ValueError(f"Patch path escapes project folder: {rel_path}")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
 

@@ -54,6 +54,11 @@ def test_extract_relevant_files_skips_nonexistent(tmp_path):
     assert "ghost.py" not in names
 
 
+def test_apply_patches_rejects_path_traversal(tmp_path):
+    with pytest.raises(ValueError, match="escapes project folder"):
+        apply_patches({"../evil.py": "bad content"}, project_folder=tmp_path)
+
+
 def test_llm_client_anthropic_generate_project_info():
     config = {"provider": "anthropic", "model": "claude-sonnet-4-6", "api_key_env": "ANTHROPIC_API_KEY"}
     with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):

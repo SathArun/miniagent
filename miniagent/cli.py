@@ -35,9 +35,9 @@ def run_agent(project_folder: Path, iterations: int, config: dict, agent_log_dir
     info_path = miniagent_dir / "project_info.md"
     cmd_path = miniagent_dir / "run_command.txt"
 
-    if not miniagent_dir.exists():
+    if not info_path.exists() or not cmd_path.exists():
         agent_log.info("First run — detecting project and generating project_info")
-        miniagent_dir.mkdir(parents=True)
+        miniagent_dir.mkdir(parents=True, exist_ok=True)
         info = detect(project_folder)
         project_info_md = llm.generate_project_info(_file_listing(project_folder))
         info_path.write_text(project_info_md)
@@ -52,57 +52,61 @@ def run_agent(project_folder: Path, iterations: int, config: dict, agent_log_dir
     error_patterns = config["runner"]["error_patterns"]
     timeout = config["runner"]["timeout_seconds"]
 
-    for i in range(1, iterations + 1):
-        agent_log.info(f"Iteration {i}: running `{command}`")
-        run_log.log({"event": "run_start", "iteration": i, "command": command})
+    try:
+        for i in range(1, iterations + 1):
+            agent_log.info(f"Iteration {i}: running `{command}`")
+            run_log.log({"event": "run_start", "iteration": i, "command": command})
 
-        result = run(command=command, cwd=project_folder, timeout=timeout, error_patterns=error_patterns)
-        run_log.log({
-            "event": "run_result",
-            "iteration": i,
-            "exit_code": result.exit_code,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
-        })
-
-        if result.success:
-            run_log.log({"event": "success", "iteration": i})
-            agent_log.info(f"Success on iteration {i}")
-            run_log.close()
-            agent_log.close()
-            return True
-
-        agent_log.info(f"Iteration {i} failed — requesting LLM fix")
-        relevant_paths = extract_relevant_files(result.stderr + result.stdout, project_folder)
-        relevant_files = {}
-        for p in relevant_paths:
-            try:
-                relevant_files[str(p.relative_to(project_folder))] = p.read_text(errors="replace")
-            except Exception:
-                pass
-
-        llm_response = llm.fix_code(
-            project_info=project_info,
-            command=command,
-            stdout=result.stdout,
-            stderr=result.stderr,
-            relevant_files=relevant_files,
-        )
-        patches = parse_patches(llm_response)
-        if patches:
-            apply_patches(patches, project_folder)
+            result = run(command=command, cwd=project_folder, timeout=timeout, error_patterns=error_patterns)
             run_log.log({
-                "event": "fix_applied",
+                "event": "run_result",
                 "iteration": i,
-                "files_changed": list(patches.keys()),
+                "exit_code": result.exit_code,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
             })
-            agent_log.info(f"Applied patches to: {list(patches.keys())}")
 
-    run_log.log({"event": "failure", "iteration": iterations, "reason": "max iterations reached"})
-    agent_log.info(f"Failed after {iterations} iterations")
-    run_log.close()
-    agent_log.close()
-    return False
+            if result.success:
+                run_log.log({"event": "success", "iteration": i})
+                agent_log.info(f"Success on iteration {i}")
+                return True
+
+            agent_log.info(f"Iteration {i} failed — requesting LLM fix")
+            relevant_paths = extract_relevant_files(result.stderr + result.stdout, project_folder)
+            relevant_files = {}
+            for p in relevant_paths:
+                try:
+                    relevant_files[str(p.relative_to(project_folder))] = p.read_text(errors="replace")
+                except Exception:
+                    pass
+
+            llm_response = llm.fix_code(
+                project_info=project_info,
+                command=command,
+                stdout=result.stdout,
+                stderr=result.stderr,
+                relevant_files=relevant_files,
+            )
+            patches = parse_patches(llm_response)
+            if patches:
+                apply_patches(patches, project_folder)
+                run_log.log({
+                    "event": "fix_applied",
+                    "iteration": i,
+                    "files_changed": list(patches.keys()),
+                    "llm_reasoning": llm_response[:500],
+                })
+                agent_log.info(f"Applied patches to: {list(patches.keys())}")
+            else:
+                agent_log.error(f"Iteration {i}: LLM returned no parseable patches")
+                run_log.log({"event": "agent_error", "iteration": i, "reason": "LLM returned no parseable patches"})
+
+        run_log.log({"event": "failure", "iteration": iterations, "reason": "max iterations reached"})
+        agent_log.info(f"Failed after {iterations} iterations")
+        return False
+    finally:
+        run_log.close()
+        agent_log.close()
 
 
 def main():
