@@ -1,5 +1,4 @@
 import argparse
-import os
 import sys
 from pathlib import Path
 
@@ -75,10 +74,12 @@ def run_agent(project_folder: Path, iterations: int, config: dict, agent_log_dir
 
         agent_log.info(f"Iteration {i} failed — requesting LLM fix")
         relevant_paths = extract_relevant_files(result.stderr + result.stdout, project_folder)
-        relevant_files = {
-            str(p.relative_to(project_folder)): p.read_text()
-            for p in relevant_paths
-        }
+        relevant_files = {}
+        for p in relevant_paths:
+            try:
+                relevant_files[str(p.relative_to(project_folder))] = p.read_text(errors="replace")
+            except Exception:
+                pass
 
         llm_response = llm.fix_code(
             project_info=project_info,
@@ -108,16 +109,23 @@ def main():
     parser = argparse.ArgumentParser(description="miniagent — auto code-fixing agent")
     parser.add_argument("project_folder", type=Path, help="Path to the project folder")
     parser.add_argument("--iterations", type=int, default=5, help="Max fix iterations (default: 5)")
+
+    _default_config = Path(__file__).parent.parent / "agent_config.toml"
+    if not _default_config.exists():
+        _default_config = Path.cwd() / "agent_config.toml"
+
     parser.add_argument(
         "--config",
         type=Path,
-        default=Path(__file__).parent.parent / "agent_config.toml",
+        default=_default_config,
         help="Path to agent_config.toml",
     )
     args = parser.parse_args()
 
     config = _load_config(args.config)
     agent_log_dir = Path(__file__).parent.parent / "logs"
+    if not agent_log_dir.parent.exists():
+        agent_log_dir = Path.cwd() / "logs"
     success = run_agent(
         project_folder=args.project_folder.resolve(),
         iterations=args.iterations,
