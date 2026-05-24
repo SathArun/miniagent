@@ -20,14 +20,13 @@ class RunLogger:
         self._events: list[dict] = []
 
     def log(self, event: dict) -> None:
-        event = {"ts": _now_iso(), **event}
-        self._events.append(event)
-        self._json_path.write_text(json.dumps(self._events, indent=2))
+        logged_event = {"ts": _now_iso(), **event}
+        self._events.append(logged_event)
         with self._txt_path.open("a") as f:
-            f.write(f"[{event['ts']}] {json.dumps({k: v for k, v in event.items() if k != 'ts'})}\n")
+            f.write(f"[{logged_event['ts']}] {json.dumps({k: v for k, v in logged_event.items() if k != 'ts'})}\n")
 
     def close(self) -> None:
-        pass
+        self._json_path.write_text(json.dumps(self._events, indent=2))
 
 
 class AgentLogger:
