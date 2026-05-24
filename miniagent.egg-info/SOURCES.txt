@@ -1,0 +1,8 @@
+pyproject.toml
+miniagent/__init__.py
+miniagent.egg-info/PKG-INFO
+miniagent.egg-info/SOURCES.txt
+miniagent.egg-info/dependency_links.txt
+miniagent.egg-info/entry_points.txt
+miniagent.egg-info/requires.txt
+miniagent.egg-info/top_level.txt
